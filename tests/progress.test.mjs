@@ -1,0 +1,3 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {cleanProgress,recordRun} from '../dist/progress.mjs';
+test('achievement rewards pay once across saved progress reloads',()=>{const run={distance:1200,feathers:100,catches:5,dodges:25};const first=recordRun({},run);assert.equal(first.reward,230);const reload=JSON.parse(JSON.stringify(first.progress));const second=recordRun(reload,run);assert.equal(second.reward,50);const third=recordRun(second.progress,run);assert.equal(third.reward,0);assert.equal(third.progress.runs,3);});
+test('old or malformed progress fields recover to safe defaults',()=>{const p=cleanProgress({distance:NaN,claimed:'bad',runs:-2});assert.equal(p.distance,0);assert.equal(p.runs,0);assert.deepEqual(p.claimed,[]);});

@@ -1,0 +1,3 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {keyAction,swipeAction} from '../dist/input.mjs';
+test('uppercase WASD and arrows agree, unknown keys do not move',()=>{for(const [a,b] of [['A','ArrowLeft'],['D','ArrowRight'],['W','ArrowUp'],['S','ArrowDown']])assert.equal(keyAction(a),keyAction(b));assert.equal(keyAction(' '),'jump');assert.equal(keyAction('Enter'),null);});
+test('swipes work in portrait and landscape while small movements are ignored',()=>{for(const [w,h] of [[320,740],[844,390],[1920,1080]]){assert.equal(swipeAction(5,4,w,h),null);assert.equal(swipeAction(60,10,w,h),'right');assert.equal(swipeAction(-60,10,w,h),'left');assert.equal(swipeAction(10,-60,w,h),'jump');assert.equal(swipeAction(10,60,w,h),'slide');}});
