@@ -17,7 +17,7 @@ Open http://localhost:8080. Opening `index.html` as a local file will not load E
 - Phone/tablet: swipe left/right to dodge, up to jump, down to slide.
 - Computer: arrow keys or WASD; Space jumps. Mouse drags also work.
 - P or Escape pauses/resumes; 1/2/3 activates the corresponding purchased bag power.
-- F or the fullscreen button toggles fullscreen where supported.
+- F or Settings → Screen fit toggles fullscreen where supported.
 - Switching tabs or losing window focus pauses the run.
 
 ## Features
@@ -50,3 +50,7 @@ Wallet, character ownership, achievements and settings are stored on this browse
 ## Assets
 
 Character/environment geometry and UI are original procedural implementations. The generated material atlas is a visual texture resource. Third-party Little Krishna/Temple Run/Subway Surfers artwork is not bundled. This implementation is not a pixel-identical reproduction of the reference artwork. Three.js and BufferGeometryUtils retain the upstream license under `dist/vendor/`.
+
+## Responsive display update
+
+Fullscreen is in **Settings → Screen fit** (or F on a keyboard), with capability detection and an honest fallback when the browser/WebView controls fullscreen. There is no floating bottom fullscreen button. The playfield follows viewport resize, orientation, safe areas and browser-bar changes. UI scales up on large screens; highly unusual aspect ratios use a centered, undistorted playfield with themed margins. GPU rendering has a pixel/dimension budget independent of CSS screen size, including 4K/8K displays. Automated viewport tests cover 280px phones, tablets, desktop, ultrawide and extreme ratios; they do not replace real hardware testing.

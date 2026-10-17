@@ -1,10 +1,11 @@
+import {displayMetrics,fullscreenState,changeFullscreen} from './display.mjs';
 import {keyAction,swipeAction} from './input.mjs';
 import {Economy,POWERS} from './economy.mjs';
 import {GameAudio} from './audio.mjs';
 import {BADGES,cleanProgress,recordRun} from './progress.mjs';
 import {Run,STAGES} from './engine.mjs';
 import {CHARACTERS} from './roster.mjs';
-import {World} from './world.mjs';
+import {World} from './world.mjs?v=8';
 const $=s=>document.querySelector(s);let world,run,mode='endless',level=1,character='krishna',screen='menu',last=0,toastTimer,finished=false,powerStamp="";
 const store={get(k,d){try{return JSON.parse(localStorage.getItem('vd-'+k))??d}catch{return d}},set(k,v){try{localStorage.setItem('vd-'+k,JSON.stringify(v))}catch{}}};
 const settings={sound:true,music:true,musicVolume:.45,sfxVolume:.75,quality:'auto',vibration:true,...store.get('settings',{})};const audio=new GameAudio(settings);let progress=cleanProgress(store.get('progress',{})),footTimer=0;document.addEventListener('pointerdown',()=>audio.unlock(),{once:true});character=store.get('character','krishna');if(!CHARACTERS.some(c=>c.id===character))character='krishna';let best=store.get('best',0),unlocked=store.get('unlocked',1);let storage;try{storage=localStorage;}catch{storage={getItem:()=>null,setItem:()=>{throw Error('Storage unavailable')}};}const economy=new Economy(storage);let bank=economy.state.coins,runId='',settlement=null;if(!economy.state.owned.includes(character))character='krishna';
@@ -38,7 +39,8 @@ $('#inventory-controls').innerHTML=POWERS.map(p=>`<button data-use="${p.id}" ari
 function usePower(id){if(screen!=='play'||run.intro>0||run.state!=='running'||run[id]>0)return;const used=economy.consume(id);if(!used.ok){toast(used.error);return;}run.activatePower(id);}
 document.querySelectorAll('[data-use]').forEach(b=>b.onclick=()=>usePower(b.dataset.use));
 $('#intro-skip').onclick=()=>run?.skipIntro();
-function openSettings(){showModal(`<span class="eyebrow">MAKE IT YOURS</span><h2>Sound & play</h2><label class="setting">Background music <input id="music-setting" type="checkbox" ${settings.music?'checked':''}></label><label class="setting">Music volume <input id="music-volume" aria-label="Music volume" type="range" min="0" max="1" step=".05" value="${settings.musicVolume}"></label><label class="setting">Sound effects <input id="sound-setting" type="checkbox" ${settings.sound?'checked':''}></label><label class="setting">Effects volume <input id="sfx-volume" aria-label="Effects volume" type="range" min="0" max="1" step=".05" value="${settings.sfxVolume}"></label><label class="setting">Haptic feedback <input id="vibration-setting" type="checkbox" ${settings.vibration?'checked':''}></label><label class="setting">Graphics <select id="quality-setting"><option value="auto" ${settings.quality==='auto'?'selected':''}>Auto · adaptive</option><option value="high" ${settings.quality==='high'?'selected':''}>Rich</option><option value="low" ${settings.quality==='low'?'selected':''}>Battery saver</option></select></label><p>Original flute-style melody, strings and percussion. Your preferences and achievements save on this device.</p><button id="settings-done" class="primary">${screen==='pause'?'RESUME RUN':'ALL SET'} <span>✓</span></button>`);
+function openSettings(){showModal(`<span class="eyebrow">MAKE IT YOURS</span><h2>Sound & display</h2><div class="display-settings"><h3>Screen fit</h3><p>Automatically fits your screen and rotation.</p><button id="fullscreen-setting" class="secondary"></button><p id="fullscreen-help"></p></div><label class="setting">Background music <input id="music-setting" type="checkbox" ${settings.music?'checked':''}></label><label class="setting">Music volume <input id="music-volume" aria-label="Music volume" type="range" min="0" max="1" step=".05" value="${settings.musicVolume}"></label><label class="setting">Sound effects <input id="sound-setting" type="checkbox" ${settings.sound?'checked':''}></label><label class="setting">Effects volume <input id="sfx-volume" aria-label="Effects volume" type="range" min="0" max="1" step=".05" value="${settings.sfxVolume}"></label><label class="setting">Haptic feedback <input id="vibration-setting" type="checkbox" ${settings.vibration?'checked':''}></label><label class="setting">Graphics <select id="quality-setting"><option value="auto" ${settings.quality==='auto'?'selected':''}>Auto · adaptive</option><option value="high" ${settings.quality==='high'?'selected':''}>Rich</option><option value="low" ${settings.quality==='low'?'selected':''}>Battery saver</option></select></label><p>Original flute-style melody, strings and percussion. Your preferences and achievements save on this device.</p><button id="settings-done" class="primary">${screen==='pause'?'RESUME RUN':'ALL SET'} <span>✓</span></button>`);
+syncFullscreenSetting();$('#fullscreen-setting').onclick=toggleFullscreen;
 const saveAudio=()=>{settings.music=$('#music-setting').checked;settings.sound=$('#sound-setting').checked;settings.musicVolume=+$('#music-volume').value;settings.sfxVolume=+$('#sfx-volume').value;audio.apply();store.set('settings',settings);};for(const id of ['music-setting','sound-setting','music-volume','sfx-volume'])$('#'+id).oninput=saveAudio;
 $('#settings-done').onclick=()=>{saveAudio();settings.vibration=$('#vibration-setting').checked;settings.quality=$('#quality-setting').value;store.set('settings',settings);world.quality(settings.quality);if(screen==='pause')resume();else $('#modal').hidden=true;audio.effect('ui');};}
 $('#settings-open').onclick=openSettings;
@@ -50,15 +52,40 @@ const canvas=$('#scene');
 canvas.addEventListener('pointerdown',e=>{if(screen!=='play'||!e.isPrimary||e.button!==0)return;touch={x:e.clientX,y:e.clientY,id:e.pointerId};canvas.setPointerCapture(e.pointerId);});
 canvas.addEventListener('pointermove',e=>{if(!touch||e.pointerId!==touch.id)return;const action=swipeAction(e.clientX-touch.x,e.clientY-touch.y,canvas.clientWidth,canvas.clientHeight);if(action){input(action);touch=null;}});
 for(const type of ['pointerup','pointercancel','lostpointercapture'])canvas.addEventListener(type,()=>touch=null);
-async function toggleFullscreen(){try{if(document.fullscreenElement)await document.exitFullscreen();else await $('#game').requestFullscreen();}catch{toast('Fullscreen is unavailable in this browser.');}}
-$('#fullscreen').hidden=!document.fullscreenEnabled;
-$('#fullscreen').onclick=toggleFullscreen;
-document.addEventListener('fullscreenchange',()=>{$('#fullscreen').setAttribute('aria-label',document.fullscreenElement?'Exit fullscreen':'Enter fullscreen');});
+function syncFullscreenSetting(){
+ const button=$('#fullscreen-setting');if(!button)return;
+ const {active,available}=fullscreenState(document,$('#game'));
+ const standalone=matchMedia('(display-mode: standalone)').matches||matchMedia('(display-mode: fullscreen)').matches||navigator.standalone===true;
+ button.disabled=!available&&!active;
+ button.textContent=active?'Exit fullscreen':available?'Enter fullscreen':'Screen fit is active';
+ button.setAttribute('aria-pressed',String(active));
+ $('#fullscreen-help').textContent=active?'Fullscreen is on. Use this button or Escape to exit.':available?'Hide browser controls for an immersive run. Keyboard shortcut: F.':standalone?'Running in app mode. Your app controls the system bars.':'This browser does not offer fullscreen. The game still fits the available screen. On iPhone, add it to your Home Screen for app mode.';
+}
+async function toggleFullscreen(){try{await changeFullscreen(document,$('#game'));}catch{toast('Fullscreen is controlled by your browser or app.');}syncFullscreenSetting();scheduleResize();}
+for(const event of ['fullscreenchange','webkitfullscreenchange'])document.addEventListener(event,()=>{syncFullscreenSetting();scheduleResize();});
 window.addEventListener('keydown',e=>{if(e.ctrlKey||e.metaKey||e.altKey||e.target.closest?.('input,select,textarea,[contenteditable="true"]'))return;const action=keyAction(e.key);if(action&&screen==='play'){e.preventDefault();if(!e.repeat){audio.unlock();input(action);}return;}if(e.repeat)return;const k=e.key.toLowerCase();if(k==='f'){e.preventDefault();toggleFullscreen();}if(['1','2','3'].includes(k)&&screen==='play'){e.preventDefault();usePower(POWERS[Number(k)-1].id);}if(k==='escape'||k==='p'){e.preventDefault();if(screen==='play')pause();else if(screen==='pause')resume();else if(k==='escape'&&screen==='characters')closeCharacters();}});
 let resizeFrame=0;
-function scheduleResize(){cancelAnimationFrame(resizeFrame);resizeFrame=requestAnimationFrame(()=>world?.resize());}
-if(typeof ResizeObserver!=='undefined')new ResizeObserver(scheduleResize).observe($('#game'));
+function applyDisplay(){
+ const root=$('#game'),v=window.visualViewport;
+ const width=v?.width||document.documentElement.clientWidth||innerWidth;
+ const height=v?.height||innerHeight;
+ root.style.width=width+'px';root.style.height=height+'px';
+ root.style.left=(v?.offsetLeft||0)+'px';root.style.top=(v?.offsetTop||0)+'px';
+ const metrics=displayMetrics(width,height);
+ const field=$('#playfield');field.style.width=metrics.width+'px';field.style.height=metrics.height+'px';
+ field.style.setProperty('--ui',metrics.scale);field.dataset.layout=metrics.width>=metrics.height?'wide':'tall';
+ world?.resize();
+}
+function scheduleResize(){if(resizeFrame)return;resizeFrame=requestAnimationFrame(()=>{resizeFrame=0;applyDisplay();});}
+if(typeof ResizeObserver!=='undefined')new ResizeObserver(scheduleResize).observe(document.documentElement);
 window.visualViewport?.addEventListener('resize',scheduleResize);
+window.visualViewport?.addEventListener('scroll',scheduleResize);
+window.addEventListener('orientationchange',scheduleResize);
+// Re-arm the DPR listener when moving a window between monitors.
+let dprMedia;
+function watchDpr(){dprMedia?.removeEventListener?.('change',onDpr);dprMedia=matchMedia(`(resolution: ${devicePixelRatio||1}dppx)`);dprMedia.addEventListener?.('change',onDpr);}
+function onDpr(){watchDpr();scheduleResize();}
+watchDpr();applyDisplay();
 window.addEventListener('blur',()=>{touch=null;if(screen==='play')pause();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){if(screen==='play')pause();audio.silence();}});window.addEventListener('resize',scheduleResize);$('#scene').addEventListener('webglcontextlost',e=>{e.preventDefault();pause();$('#error-message').textContent='The 3D graphics connection was interrupted. Reload to start a fresh run; your saved best and makhan are safe.';$('#error').hidden=false;});
 let prevStage=0,lastHud=0;

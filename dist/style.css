@@ -47,3 +47,36 @@ body{overscroll-behavior:none}#scene{touch-action:none;user-select:none}
  #intro-caption{bottom:12%;font-size:14px}#toast{top:29%;max-width:55%}
 }
 @media(prefers-reduced-motion:reduce){.loadbar:after,.loading-feather{animation:none}button{transition:none!important}}
+/* v8: a bounded composition inside any viewport; no fixed device assumptions. */
+html,body{width:100%;height:100%;background:#102e2b}
+#game{position:fixed;inset:0;display:grid;place-items:center;min-height:0;background:radial-gradient(ellipse at center,#366452,#102e2b 80%)}
+#playfield{position:relative;overflow:hidden;flex:none;--ui:1;container-type:size;background:#a9dcf1}
+#fullscreen{display:none!important}
+.menu-footer{right:5%}
+.menu-actions{max-width:calc(360px * var(--ui))}
+.menu-actions button{min-height:calc(43px * var(--ui));font-size:calc(16px * var(--ui));border-radius:calc(13px * var(--ui));padding:calc(8px * var(--ui)) calc(12px * var(--ui))}
+.menu-actions .primary{min-height:calc(54px * var(--ui))}.menu-actions{gap:calc(10px * var(--ui))}
+.menu-actions button span{font-size:calc(23px * var(--ui));width:calc(22px * var(--ui))}
+#menu .title h1{font-size:clamp(27px,8cqw,calc(54px * var(--ui)))}#menu .title h1 span{font-size:clamp(45px,14cqw,calc(88px * var(--ui)))}
+.sheet{width:min(92%,calc(500px * var(--ui)));max-width:calc(600px * var(--ui));max-height:calc(100% - 16px);padding:clamp(16px,3cqw,40px);font-size:calc(14px * var(--ui));overflow:auto;touch-action:pan-y}
+.sheet h2{font-size:calc(28px * var(--ui))}.sheet p{font-size:calc(13px * var(--ui))}.sheet button{min-height:44px}.setting{gap:14px;flex-wrap:wrap}.setting select{max-width:100%}.display-settings{border-bottom:1px solid #b89659;padding-bottom:12px;margin-bottom:16px}.display-settings h3{margin:8px 0}.display-settings button{width:100%;font-size:inherit}.display-settings button:disabled{opacity:.75;cursor:default}
+#hud{left:max(14px,env(safe-area-inset-left));right:max(14px,env(safe-area-inset-right))}
+.hud-left{margin-right:calc(56px * var(--ui));padding:calc(7px * var(--ui)) calc(10px * var(--ui));min-width:calc(115px * var(--ui))}.score>span{font-size:calc(18px * var(--ui))}.score small{font-size:calc(7px * var(--ui))}.statline{font-size:calc(12px * var(--ui))}
+.hud-right #pause{width:calc(44px * var(--ui));height:calc(48px * var(--ui));font-size:calc(24px * var(--ui))}.hud-right #hearts{font-size:calc(25px * var(--ui))}
+#stage{width:calc(150px * var(--ui));top:calc(95px * var(--ui))}#stage b{font-size:calc(12px * var(--ui))}
+#active-powers,#chase{top:calc(145px * var(--ui))}#active-powers{width:calc(116px * var(--ui));max-width:calc(116px * var(--ui))}#chase{max-width:calc(115px * var(--ui))}#chase>span,.power-card b{font-size:calc(10px * var(--ui))}.power-card small{font-size:calc(9px * var(--ui))}#chase b{font-size:calc(14px * var(--ui))}
+#inventory-controls button{width:calc(52px * var(--ui));height:calc(58px * var(--ui))}#inventory-controls button>span{font-size:calc(25px * var(--ui))}#inventory-controls small{font-size:calc(8px * var(--ui))}#inventory-controls b{font-size:calc(10px * var(--ui))}
+#controls .hint{font-size:calc(9px * var(--ui))}#toast{font-size:calc(12px * var(--ui))}
+#playfield[data-layout=wide] #stage{top:max(22px,env(safe-area-inset-top))}
+#playfield[data-layout=wide] #active-powers,#playfield[data-layout=wide] #chase{top:calc(90px * var(--ui))}
+#playfield[data-layout=wide] .menu-footer{right:7%;width:30%;max-width:calc(360px * var(--ui))}
+#playfield[data-layout=wide] #menu .title h1{font-size:clamp(24px,3.3cqw,calc(48px * var(--ui)))}#playfield[data-layout=wide] #menu .title h1 span{font-size:clamp(42px,5.4cqw,calc(76px * var(--ui)))}
+#playfield[data-layout=wide] .character-bottom{max-width:calc(470px * var(--ui))}.roster-portrait{max-height:calc(95px * var(--ui))}.character-caption h3{font-size:calc(24px * var(--ui))}.character-caption p{font-size:calc(11px * var(--ui))}
+@media(orientation:landscape) and (max-height:540px){
+ .menu-actions{top:8%;gap:6px;max-height:74%;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;padding:5px}
+ .menu-actions button{min-height:36px;padding:4px 9px;font-size:13px}.menu-actions .primary{min-height:40px}
+ #playfield[data-layout=wide] #active-powers{top:55px}#playfield[data-layout=wide] #chase{top:70px}
+ #inventory-controls button{height:44px;width:44px}.character-caption h3{font-size:18px}.character-caption p{font-size:10px}
+}
+@media(max-width:359px){.menu-actions{right:4%;width:43%;gap:8px}.menu-actions button{font-size:12px;padding:6px}.menu-actions button span{width:16px;font-size:18px}.hud-right #hearts{font-size:21px}#chase{max-width:100px}.character-caption h3{font-size:19px}}
+@media(min-width:1600px) and (min-height:800px){.best-line,.tagline,.menu-footer .text-button{font-size:calc(12px * var(--ui))}.menu-footer .text-button{min-height:44px}.character-bottom{gap:calc(14px * var(--ui))}}
