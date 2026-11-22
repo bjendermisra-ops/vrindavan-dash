@@ -1,289 +1,79 @@
-import {trackScale,strideRate} from './gait.mjs';
+import {surface} from './materials.mjs';
 import * as T from './vendor/three.module.js';
-import {GLTFLoader} from './vendor/GLTFLoader.js';
-import {clone} from './vendor/SkeletonUtils.js';
-import {mergeGeometries} from './vendor/BufferGeometryUtils.js';
-import {profile, oval, curve, ring, pivot} from './figure-parts.mjs';
-
-async function loadFigure(name) {
- const url = new URL('./assets/' + name + '.glb', import.meta.url);
- let bytes;
- if (url.protocol === 'file:' && typeof document === 'undefined') {
-  bytes = new Uint8Array(await (await import('node:fs/promises')).readFile(url)).buffer;
- } else {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error('Could not load ' + name + ' model');
-  bytes = await response.arrayBuffer();
- }
- const scene=(await new GLTFLoader().parseAsync(bytes,'')).scene;
- const mesh=scene.getObjectByName('Figure'), bones=[...mesh.skeleton.bones];
- const {position,skinIndex,skinWeight}=mesh.geometry.attributes;
- const female=name==='radha';
- for(const [side,suffix] of [[-1,'l'],[1,'r']]){
-  const shin=scene.getObjectByName('Shin'+suffix), ankle=new T.Bone();
-  ankle.name='Foot'+suffix;
-  const at=new T.Vector3(side*(female?.242:.264),female?.101:.097,female?-.045:-.020);
-  ankle.position.copy(shin.worldToLocal(at));shin.add(ankle);
-  const old=bones.indexOf(shin), next=bones.length;bones.push(ankle);
-  for(let i=0;i<position.count;i++){
-   const w=1-T.MathUtils.smoothstep(position.getY(i),.08,.15);
-   if(!w||skinIndex.getX(i)!==old)continue;
-   skinIndex.setXYZW(i,next,old,0,0);skinWeight.setXYZW(i,w,1-w,0,0);
-  }
- }
- scene.updateMatrixWorld(true);mesh.bind(new T.Skeleton(bones));
- return scene;
-}
-
-const [krishna, radha] = await Promise.all([loadFigure('krishna'), loadFigure('radha')]);
-const gold = '#ca9a44';
-const silks = {
- krishna: '#e4ae36', festival: '#df792e', peacock: '#207a70',
- cowherd: '#e9dfbc', radha: '#b84b71', royal: '#304c89', danav: '#503d59'
-};
-
-// Open-ended, tapered hair ribbons with a rounded cross-section and a side part.
-function hair(head, female) {
- const verts=[], indices=[], shades=[];
- const color = new T.Color();
- for (let lock=0;lock<48;lock++) {
-  const phi = lock / 48 * Math.PI * 2;
-  const front = Math.max(0,-Math.sin(phi));
-  const end = 2.25 - front*1.22 + .18*Math.sin(phi*4+.4);
-  for(let j=0;j<=16;j++) {
-   const u=j/16, theta=.06+u*end, a=phi+.63*(1-u)+.13*Math.sin(u*10+phi*3)*u;
-   const radius=.022*Math.pow(Math.sin(Math.PI*(.02+.96*u)),.46);
-   const point=[(.129+.021*u*u)*Math.sin(theta)*Math.cos(a),2.23+.166*Math.cos(theta)-.158*u*u*(1-front),-.062+(.16+.032*u*u)*Math.sin(theta)*Math.sin(a)];
-   for(let k=0;k<8;k++){
-    const angle=k*Math.PI/4, sweep=radius*Math.cos(angle), lift=radius*.47*Math.sin(angle);
-    verts.push(point[0]-sweep*Math.sin(a)+lift*Math.cos(a),point[1]+lift*.45,point[2]+sweep*Math.cos(a)+lift*Math.sin(a));
-    color.set(lock%5===0?'#372b29':'#231e23').multiplyScalar(.76+.23*(1+Math.sin(angle)));
-    shades.push(color.r,color.g,color.b);
-    if(j){const p=(lock*17+j)*8+k, next=(lock*17+j)*8+(k+1)%8;indices.push(p,next,p-8,next,next-8,p-8);}
-   }
-  }
- }
- const geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(verts,3));geo.setAttribute('color',new T.Float32BufferAttribute(shades,3));geo.setIndex(indices);geo.computeVertexNormals();
- const locks=new T.Mesh(geo,new T.MeshStandardMaterial({vertexColors:true,side:T.DoubleSide,roughness:.79}));head.add(locks);
- if(female) for(let i=0;i<8;i++){const t=i/8;oval(head,'#251d20',[.012*Math.sin(i*2),2.14-t*.45,.075],[.05*(1-t*.65),.057,.038]);}
-}
-
-function face(head,female,danav) {
- const y=female?2.204:2.210;
- for(const side of [-1,1]){
-  curve(head,'#31262a',[[side*.020,y+.026,-.211],[side*.044,y+.029,-.206],[side*.062,y+.026,-.197],[side*.075,y+.021,-.183]],.0032);
-  ring(head,gold,[side*.111,2.142,-.054],.015,.0028,0);
- }
- if(danav)return;
- if(female) oval(head,'#982e39',[0,2.248,-.208],[.005,.007,.0025]);
- else {
-  curve(head,'#f1e9cf',[[-.011,2.274,-.206],[-.008,2.25,-.211],[0,2.236,-.213],[.008,2.25,-.211],[.011,2.274,-.206]],.0026);
-  curve(head,gold,[[0,2.276,-.207],[0,2.254,-.213]],.002);
- }
-}
-
-function headwear(head,outfit) {
- const band=ring(head,gold,[0,2.296,-.067],.11,.005);
- band.scale.y=1.26;
- if(outfit==='festival'){
-  for(let i=0;i<4;i++){const wrap=oval(head,i%2?'#cb6228':'#eb9842',[0,2.31+i*.016,-.066],[.146-i*.004,.042,.159-i*.003]);wrap.rotation.z=(i%2?1:-1)*.12;}
- }
- if(['royal','peacock'].includes(outfit)){
-  profile(head,gold,[[0,.13,.151],[.035,.124,.144],[.065,.108,.135]],[0,2.286,-.067]);
-  for(let i=0;i<11;i++){const a=(i/10)*Math.PI;oval(head,gold,[.122*Math.cos(a),2.35+.022*Math.sin(a),-.065-.14*Math.sin(a)],[.017,.036,.010]);}
-  oval(head,outfit==='royal'?'#375497':'#207667',[0,2.344,-.216],[.018,.027,.008]);
- }
- if(outfit==='cowherd'||outfit==='radha')return;
- const plume=pivot(head,[.071,2.326,-.077]);plume.rotation.z=-.51;plume.scale.set(1.6,1.18,1);
- curve(plume,gold,[[0,0,0],[.008,.11,0],[.014,.228,0]],.0024);
- for(let i=0;i<15;i++){const u=i/14,w=.038*Math.sin(Math.PI*(.08+.91*u));for(const s of [-1,1])curve(plume,i%3?'#458569':'#829256',[[.007,.052+u*.134,0],[s*w,.079+u*.128,0],[s*w*.88,.094+u*.128,0]],.002);}
- oval(plume,'#ad9a54',[.009,.16,-.004],[.025,.038,.005]);oval(plume,'#257d84',[.009,.16,-.009],[.017,.027,.003]);oval(plume,'#263e68',[.009,.16,-.012],[.010,.017,.002]);
-}
-
-// Bind pleated panels to the same hip and knee bones as the figure.
-function drape(figure, rows, side, color, skirt=false) {
- const verts=[],indices=[],joints=[],weights=[],shades=[];
- const bones=figure.skeleton.bones, boneIndex=name=>bones.findIndex(b=>b.name===name);
- const palette=new T.Color(color), border=new T.Color('#cb9c54');
- for(let j=0;j<rows.length;j++){
-  const [y,cx,rx,rz,cz]=rows[j];
-  for(let i=0;i<=64;i++){
-   const a=i/64*Math.PI*2,fold=Math.cos(a*(skirt?22:12)+y*4+1.7*Math.sin(a*2+y*3)), ripple=1+fold*.048;
-   const x=cx*side+Math.cos(a)*rx*ripple;
-   verts.push(x,y,cz+Math.sin(a)*rz*ripple);
-   const sideBone=side||Math.sign(x), suffix=sideBone<0?'l':'r';
-   const hip=T.MathUtils.smoothstep(y,1.10,1.44), shin=1-T.MathUtils.smoothstep(y,.53,.81);
-   const opposite=suffix==='l'?'r':'l', cross=side?0:.5*(1-T.MathUtils.smoothstep(Math.abs(x),0,.12));
-   joints.push(boneIndex('Body'),boneIndex('Leg'+suffix),boneIndex('Shin'+suffix),boneIndex((shin>.5?'Shin':'Leg')+opposite));
-   weights.push(hip,(1-hip)*(1-shin)*(1-cross),(1-hip)*shin*(1-cross),(1-hip)*cross);
-   const c=(j===rows.length-2?border:palette).clone().multiplyScalar(.87+.12*fold);shades.push(c.r,c.g,c.b);
-   if(i&&j){const k=j*65+i;indices.push(k,k-66,k-1,k,k-65,k-66);}
-  }
- }
- const geo=new T.BufferGeometry();
- for(const [name,values] of [['position',verts],['color',shades]])geo.setAttribute(name,new T.Float32BufferAttribute(values,3));
- geo.setAttribute('skinIndex',new T.Uint16BufferAttribute(joints,4));geo.setAttribute('skinWeight',new T.Float32BufferAttribute(weights,4));geo.setIndex(indices);geo.computeVertexNormals();
- const cloth=new T.SkinnedMesh(geo,new T.MeshStandardMaterial({vertexColors:true,side:T.DoubleSide,roughness:.78}));
- figure.parent.add(cloth);cloth.bind(figure.skeleton,figure.bindMatrix);cloth.frustumCulled=false;cloth.castShadow=true;cloth.receiveShadow=true;
-}
-
-// A single folded uttariya runs from the back of the belt over the shoulder.
-function shoulderDrape(body,color) {
- const path=new T.CatmullRomCurve3([
-  [-.16,1.41,.137],[-.135,1.64,.151],[.06,1.88,.145],[.16,1.991,.014],
-  [.16,1.99,-.084],[.12,1.888,-.191],[-.012,1.755,-.235],
-  [-.105,1.61,-.216],[-.171,1.466,-.196],[-.155,1.37,-.208]
- ].map(p=>new T.Vector3(...p)));
- const points=[],colors=[],indices=[];
- const silk=new T.Color(color),border=new T.Color('#d3a950');
- for(let j=0;j<=40;j++){
-  const t=j/40,p=path.getPoint(t);
-  for(let i=0;i<=12;i++){
-   const u=i/12,dx=(u-.5)*.133, fold=.006*Math.cos(u*Math.PI*6+t*2);
-   points.push(p.x+dx,p.y-dx*.32+fold*.3,p.z+fold*(t<.35?1:-1));
-   const c=(i===1||i===11?border:silk).clone().multiplyScalar(.88+.11*Math.cos(u*Math.PI*6));colors.push(c.r,c.g,c.b);
-   if(i&&j){const k=j*13+i;indices.push(k,k-14,k-1,k,k-13,k-14);}
-  }
- }
- const geometry=new T.BufferGeometry();geometry.setAttribute('position',new T.Float32BufferAttribute(points,3));geometry.setAttribute('color',new T.Float32BufferAttribute(colors,3));geometry.setIndex(indices);geometry.computeVertexNormals();
- const fabric=new T.Mesh(geometry,new T.MeshStandardMaterial({side:T.DoubleSide,vertexColors:true,roughness:.75}));fabric.castShadow=true;body.add(fabric);
-}
-
-function costume(model,body,limbs,outfit) {
- const female=outfit==='radha', cloth=silks[outfit], sash=female?'#cc9a54':'#a53e39', figure=model.getObjectByName('Figure');
- if(female){
-  drape(figure,[[1.46,0,.217,.202,-.04],[1.33,0,.257,.223,-.03],[1.14,0,.295,.245,-.03],[.87,0,.323,.252,-.038],[.57,0,.367,.26,-.04],[.34,0,.378,.275,-.04],[.315,0,.378,.275,-.04]],0,cloth,true);
- }else{
-  for(const side of [-1,1])drape(figure,[[1.32,.133,.144,.176,-.017],[1.21,.145,.163,.194,-.018],[1.08,.161,.18,.197,-.032],[.89,.182,.174,.178,-.041],[.68,.202,.14,.142,-.033],[.53,.225,.112,.126,-.011],[.43,.234,.095,.104,.004],[.405,.235,.096,.105,.004]],side,cloth);
-  drape(figure,[[1.46,0,.202,.186,-.047],[1.39,0,.229,.199,-.034],[1.29,0,.254,.215,-.028],[1.18,0,.271,.215,-.026],[1.12,0,.273,.211,-.027],[1.105,0,.273,.211,-.027]],0,cloth,true);
- }
- profile(body,sash,[[1.377,.246,.211],[1.407,.244,.211],[1.453,.218,.202],[1.477,.195,.183]],[0,0,-.044],.018);
- const tails=[];
- for(const side of [-1,1]){
-  const tail=pivot(body,[side*.154,1.42,-.167]);tail.rotation.z=side*.21;
-  profile(tail,sash,[[0,.052,.021],[-.13,.062,.023],[-.28,.047,.020],[-.435,.042,.017]],undefined,.10);tails.push(tail);
- }
- if(outfit==='danav') shoulderDrape(body,'#473745');
- if(!female && outfit!=='danav'){
-  shoulderDrape(body,outfit==='peacock'?'#254d77':outfit==='cowherd'?'#ba7650':sash);
-  const flute=pivot(body,[.19,1.45,-.149]);flute.rotation.z=-.43;
-  curve(flute,'#966331',[[0,-.14,0],[0,.21,0]],.014);
-  for(const y of [-.12,.16,.194])ring(flute,gold,[0,y,0],.014,.0025);
-  for(let i=0;i<5;i++)oval(flute,'#4a3727',[0,-.06+i*.039,-.013],[.003,.004,.0015]);
- }
- const necklace=[[ -.108,1.963,-.059],[-.115,1.895,-.132],[-.087,1.847,-.16],[0,1.785,-.196],[.087,1.847,-.16],[.115,1.895,-.132],[.108,1.963,-.059]];
- curve(body,gold,necklace,.005);oval(body,gold,[0,1.771,-.199],[.016,.022,.005]);
- if(outfit==='cowherd'||female){
-  const path=new T.CatmullRomCurve3(necklace.map(p=>new T.Vector3(...p)));
-  for(let i=0;i<=22;i++){const p=path.getPoint(i/22);oval(body,i%3?'#eee1c4':'#d6914a',p.toArray(),[.015,.016,.013]);}
- }
- for(const limb of limbs){
-  const band=ring(limb.arm,gold,[limb.side*.049,-.055,0],.069,.006);
-  band.rotation.z=limb.side*.70;
- }
- return tails;
-}
-
-// Hair strands, feather details and jewellery move together with the head.
-function batchOrnaments(group) {
- group.updateWorldMatrix(true,true);
- const local=new T.Matrix4().copy(group.matrixWorld).invert(), batches=new Map();
- group.traverse(mesh=>{
-  if(!mesh.isMesh)return;
-  const {metalness,roughness,side}=mesh.material,key=[metalness,roughness,side].join('/');
-  if(!batches.has(key))batches.set(key,{pieces:[],material:new T.MeshStandardMaterial({metalness,roughness,side,vertexColors:true})});
-  const geo=mesh.geometry.clone().applyMatrix4(new T.Matrix4().multiplyMatrices(local,mesh.matrixWorld));
-  geo.deleteAttribute('uv');
-  if(!geo.attributes.color){
-   const colors=new Float32Array(geo.attributes.position.count*3);
-   for(let i=0;i<colors.length;i+=3)mesh.material.color.toArray(colors,i);
-   geo.setAttribute('color',new T.BufferAttribute(colors,3));
-  }
-  batches.get(key).pieces.push(geo);
- });
- group.clear();
- for(const {pieces,material} of batches.values()){
-  const mesh=new T.Mesh(mergeGeometries(pieces),material);
-  mesh.castShadow=true;mesh.receiveShadow=true;group.add(mesh);
- }
-}
-
+// Original authored surfaces and articulated animation; no external model dependency.
+const materials={};
+function material(c,metal=0){const key=c+metal;return materials[key]??=new T.MeshStandardMaterial({color:c,map:['#ffce39','#189d89','#e74555','#184aad','#f3e7c9','#ed6b9c','#f5a42a','#ffbd59'].includes(c)?surface('silk'):null,roughness:metal?.48:.93,metalness:metal});}
+function add(parent,geo,color,p=[0,0,0],scale=[1,1,1],metal=0){const m=new T.Mesh(geo,material(color,metal));m.position.set(...p);m.scale.set(...scale);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m;}
+const ellipsoid=new T.SphereGeometry(1,28,20);
+function oval(g,c,p,s){return add(g,ellipsoid,c,p,s)}
+function profile(g,c,rings,p=[0,0,0],pleats=0){const N=40,v=[],uv=[],idx=[];for(let j=0;j<rings.length;j++){const [y,rx,rz]=rings[j];for(let i=0;i<=N;i++){const a=i/N*Math.PI*2,r=1+pleats*Math.sin(a*12);v.push(Math.cos(a)*rx*r,y,Math.sin(a)*rz*r);uv.push(i/N,j/(rings.length-1));if(j&&i){const k=j*(N+1)+i;if(rings[1][0]>rings[0][0])idx.push(k,k-N-2,k-1,k,k-N-1,k-N-2);else idx.push(k,k-1,k-N-2,k,k-N-2,k-N-1);}}}const geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(v,3));geo.setAttribute('uv',new T.Float32BufferAttribute(uv,2));geo.setIndex(idx);geo.computeVertexNormals();return add(g,geo,c,p);}
+function curve(g,c,points,r=.015,metal=0){return add(g,new T.TubeGeometry(new T.CatmullRomCurve3(points.map(p=>new T.Vector3(...p))),Math.max(12,points.length*4),r,6,false),c,[0,0,0],[1,1,1],metal);}
+function ring(g,c,p,r,t=.014,rot=Math.PI/2){const m=add(g,new T.TorusGeometry(r,t,7,28),c,p,[1,1,1],.65);m.rotation.x=rot;return m;}
+function pivot(g,p){const v=new T.Group();v.position.set(...p);g.add(v);return v;}
 export function makeHero(outfit='krishna'){
- const female=outfit==='radha', g=new T.Group(), body=pivot(g,[0,0,0]);
- const model=clone(female?radha:krishna);body.add(model);
- const figure=model.getObjectByName('Figure');
- figure.castShadow=true;figure.receiveShadow=true;figure.frustumCulled=false;
- if(!female) {
-  figure.material=figure.material.clone();
-  figure.material.color.set(outfit==='danav'?'#ba928a':'#c3d2ff');
+ const g=new T.Group(),body=pivot(g,[0,0,0]);const isRadha=outfit==='radha',skin=isRadha?'#ce906d':'#789cea',light=isRadha?'#d99978':'#83a4ed',gold='#ffc957',cloth=outfit==='royal'?'#184aad':outfit==='peacock'?'#189d89':outfit==='cowherd'?'#f3e7c9':isRadha?'#ed6b9c':outfit==='festival'?'#f5a42a':'#ffce39',sashColor=outfit==='peacock'?'#184aad':isRadha?'#ffbd59':'#e74555';
+ // Continuous torso surface, sculpted shoulders and gently tapered waist.
+ profile(body,skin,[[.96,.16,.12],[1.02,.23,.16],[1.17,.23,.16],[1.38,.30,.18],[1.55,.32,.175],[1.65,.24,.15],[1.69,.12,.10],[1.76,.10,.09]]);
+ profile(body,cloth,[[.81,.25,.21],[.88,.33,.24],[1,.31,.21],[1.06,.25,.17]],undefined,.035);
+ const head=pivot(body,[0,1.99,-.005]);head.scale.set(1.08,1.06,1.04);
+ const face=ellipsoid.clone(),pos=face.attributes.position;
+ for(let i=0;i<pos.count;i++){let x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i);const jaw=y<-.15?1-(-y-.15)*.24:1;pos.setXYZ(i,x*.335*jaw,y*.365,z*.302-(z<0?Math.exp(-(((y+.12)/.32)**2))*.014:0));}face.computeVertexNormals();add(head,face,skin);
+ for(const side of [-1,1]){
+ oval(head,skin,[side*.324,-.025,0],[.069,.10,.048]);oval(head,light,[side*.35,-.023,-.027],[.028,.057,.017]);ring(head,gold,[side*.342,-.13,-.012],.041,.009,0);
+ const eye=pivot(head,[side*.127,.026,-.265]);eye.rotation.y=side*-.21;
+ oval(eye,'#edf4ff',[0,0,0],[.092,.079,.013]);oval(eye,'#573126',[0,-.002,-.013],[.049,.059,.008]);oval(eye,'#111a32',[0,-.002,-.021],[.028,.043,.005]);oval(eye,'#ffffff',[-.015,.019,-.026],[.009,.012,.003]);
+ curve(eye,skin,[[-.087,0,0],[-.065,.064,-.005],[0,.081,-.003],[.065,.063,-.005],[.087,0,0]],.012);curve(eye,skin,[[-.087,0,0],[-.045,-.069,-.003],[.035,-.073,-.003],[.087,0,0]],.009);
+ curve(head,'#20203c',[[side*.055,.146,-.275],[side*.13,.162,-.282],[side*.205,.14,-.251]],.014);
  }
- const head=model.getObjectByName('Head');
- const ornaments=pivot(head,head.position.clone().negate().toArray());
- hair(ornaments,female);face(ornaments,female,outfit==='danav');
- if(outfit==='danav'){
-  for(const side of [-1,1])curve(ornaments,'#bc9b74',[[side*.09,2.31,0],[side*.13,2.38,.01],[side*.12,2.43,.04]],.017);
- }else headwear(ornaments,outfit);batchOrnaments(ornaments);
- const limbs=[-1,1].map(side=>{
-  const suffix=side<0?'l':'r', joint=name=>model.getObjectByName(name+suffix);
-  return {side,leg:joint('Leg'),shin:joint('Shin'),arm:joint('Arm'),fore:joint('Fore'),foot:joint('Foot')};
- });
- const tails=costume(model,body,limbs,outfit);
- const wing=new T.Group();body.add(wing);wing.visible=false;
- for(const s of [-1,1])for(let i=0;i<7;i++){
-  const feather=oval(wing,i%2?'#308d83':'#317085',[s*(.28+i*.12),1.78-i*.057,.14],[.095,.34,.026]);feather.rotation.z=s*(.62+i*.10);
+ oval(head,skin,[0,-.06,-.294],[.044,.053,.028]);curve(head,'#7b3b62',[[-.071,-.17,-.269],[0,-.185,-.291],[.071,-.17,-.269]],.011);curve(head,'#aec7ff',[[-.046,-.202,-.265],[0,-.209,-.274],[.045,-.201,-.266]],.007);
+ if(!isRadha){curve(head,'#fff4d8',[[-.027,.22,-.253],[-.02,.12,-.297],[0,.095,-.306],[.02,.12,-.297],[.027,.22,-.253]],.007);curve(head,'#f2b73f',[[0,.23,-.252],[0,.151,-.291]],.006);}
+ // Hair cap and sculpted spiral locks: fine tubular curls instead of a cluster of balls.
+ const hairGeo=new T.SphereGeometry(1,30,18,0,Math.PI*2,0,Math.PI*.63);add(head,hairGeo,'#11162d',[0,.09,.035],[.355,.32,.32]);
+ for(let j=0;j<64;j++){const a=j*2.39996,theta=.18+(j%11)/11*1.55;const cx=Math.cos(a)*Math.sin(theta)*.347,cy=.09+Math.cos(theta)*.31,cz=.035+Math.sin(a)*Math.sin(theta)*.31;const lock=pivot(head,[cx,cy,cz]);lock.lookAt(new T.Vector3(cx*2,cy*2,cz*2));const points=[];for(let k=0;k<10;k++){const b=k/9*Math.PI*1.6;points.push([Math.cos(b)*.026,Math.sin(b)*.026,.012]);}curve(lock,j%4?'#17182b':'#26273b',points,.021);}
+ for(let j=0;j<5;j++)curve(head,'#17182b',[[-.22+j*.11,.235,-.215],[-.235+j*.11,.193,-.261],[-.21+j*.11,.169,-.272],[-.193+j*.11,.198,-.258]],.026);
+ const plume=pivot(head,[.10,.32,.04]);plume.rotation.z=-.3;plume.visible=!isRadha&&outfit!=='cowherd';curve(plume,gold,[[0,0,0],[.02,.24,0],[0,.48,0]],.007);
+ oval(plume,'#199c6d',[0,.32,0],[.095,.18,.018]);oval(plume,'#e8c759',[0,.35,-.02],[.065,.09,.01]);oval(plume,'#1874a7',[0,.35,-.031],[.046,.068,.008]);oval(plume,'#18286a',[0,.35,-.04],[.025,.041,.006]);
+ for(let i=0;i<7;i++)curve(plume,'#69c07c',[[-.015,.19+i*.028,-.018],[-.073,.26+i*.018,-.018]],.003);
+ if(outfit==='royal'){profile(head,gold,[[.20,.33,.28],[.34,.30,.26],[.39,.27,.24]]);for(let i=0;i<9;i++){const a=i/9*Math.PI*2;oval(head,gold,[Math.cos(a)*.28,.43+Math.max(0,-Math.sin(a))*.05,Math.sin(a)*.24],[.05,.12,.035]);}oval(head,'#2388bf',[0,.37,-.28],[.06,.075,.018]);for(let side of [-1,1])oval(body,gold,[side*.31,1.55,0],[.14,.09,.19]);profile(body,'#184aad',[[1.1,.24,.17],[1.45,.31,.19],[1.6,.25,.17]]);}
+ if(outfit==='festival'){for(let i=0;i<4;i++){const wrap=ring(head,'#ffce39',[0,.18+i*.047,.025],.34-i*.025,.043);wrap.rotation.z=(i%2?1:-1)*.09;}oval(head,'#e74555',[.23,.27,-.13],[.09,.12,.05]);ring(head,gold,[.20,.27,-.2],.045,.016,0);}
+ if(outfit==='peacock'){for(let i=0;i<7;i++){const x=(i-3)*.075;oval(head,gold,[x,.26+(.1-Math.abs(x)*.3),-.23],[.043,.105,.018]);}oval(head,'#189d89',[0,.31,-.255],[.038,.048,.012]);}
+ if(outfit==='cowherd'){for(let i=0;i<19;i++){const a=i/18*Math.PI;oval(body,i%2?'#fff3d5':'#ffbd35',[Math.cos(a)*.255,1.59-Math.sin(a)*.32,-.21],[.035,.04,.032]);}ring(head,'#e74555',[0,.15,.02],.335,.025);}
+ if(isRadha){profile(body,cloth,[[.33,.35,.29],[.45,.40,.31],[.70,.34,.26],[.96,.26,.20]],undefined,.055);profile(body,'#e86299',[[1.06,.24,.17],[1.25,.26,.18],[1.5,.32,.19],[1.61,.23,.15]]);ring(body,gold,[0,.39,0],.36,.025);oval(head,'#9e2546',[0,.15,-.285],[.015,.024,.007]);for(let i=0;i<8;i++)oval(head,'#191727',[0,-.12-i*.10,.26],[.065,.075,.048]);for(let side of [-1,1])for(let i=0;i<4;i++)oval(head,i%2?'#fff1d1':'#f39eb4',[side*.27,.19-i*.045,-.15],[.03,.035,.025]);}
+ // Necklace chains and a central pendant.
+ for(const depth of [.05,.14]){const points=[];for(let i=0;i<=20;i++){const a=i/20*Math.PI;points.push([Math.cos(a)*.21,1.60-Math.sin(a)*(.13+depth),-.15-Math.sin(a)*.04]);}curve(body,gold,points,.012,.6);}ring(body,gold,[0,1.31,-.204],.042,.012,0);oval(body,'#ee6154',[0,1.31,-.205],[.024,.027,.012]);
+ profile(body,sashColor,[[.97,.30,.22],[1.04,.29,.205],[1.09,.25,.18]],undefined,.02);ring(body,gold,[0,1.04,0],.285,.013);oval(body,gold,[.12,1.045,-.204],[.055,.05,.022]);
+ // Legs have hip/knee joints, fabric folds, ankles and bare feet.
+ const limbs=[];
+ for(const side of [-1,1]){
+ const leg=pivot(body,[side*.153,.94,0]);profile(leg,cloth,[[0,.135,.16],[-.08,.16,.17],[-.25,.155,.16],[-.40,.115,.125],[-.44,.10,.10]],undefined,.07);
+ const shin=pivot(leg,[0,-.43,0]);profile(shin,skin,[[0,.092,.092],[-.08,.098,.10],[-.23,.065,.07],[-.34,.057,.055]]);ring(shin,gold,[0,-.29,0],.067,.016);oval(shin,skin,[0,-.385,-.068],[.083,.067,.17]);
+ for(let k=0;k<4;k++)oval(shin,light,[(k-1.5)*.033,-.383,-.195],[.017,.026,.032]);
+ const arm=pivot(body,[side*.30,1.57,0]);profile(arm,skin,[[.03,.07,.075],[-.04,.11,.105],[-.17,.09,.085],[-.30,.065,.063]]);ring(arm,gold,[0,-.1,0],.102,.016);
+ const fore=pivot(arm,[0,-.29,0]);profile(fore,skin,[[0,.064,.063],[-.08,.072,.069],[-.20,.05,.048],[-.26,.045,.045]]);ring(fore,gold,[0,-.22,0],.053,.014);oval(fore,skin,[0,-.30,-.012],[.065,.077,.046]);oval(fore,light,[-side*.053,-.29,-.025],[.025,.045,.025]);limbs.push({leg,shin,arm,fore,side});
  }
- batchOrnaments(wing);
- g.userData={body,head,limbs,tails,wing,phase:0,slideBlend:0};
- animateHero(g,0,{running:false});return g;
+ const tails=[];for(const side of [-1,1]){const tail=pivot(body,[side*.21,1.02,.10]);const geo=new T.PlaneGeometry(.17,.63,4,12);const p=geo.attributes.position;for(let i=0;i<p.count;i++){const y=p.getY(i);p.setZ(i,Math.sin(y*18)*.018);p.setY(i,y-.30);}geo.computeVertexNormals();const m=add(tail,geo,sashColor);m.material=material(sashColor).clone();m.material.side=T.DoubleSide;tails.push(tail);}
+ const wing=new T.Group();wing.visible=false;body.add(wing);for(let side of [-1,1])for(let i=0;i<7;i++){const p=oval(wing,i%2?'#20b9b2':'#146ab3',[side*(.4+i*.14),1.5-i*.07,.20],[.13,.48,.055]);p.rotation.z=side*(.65+i*.11);oval(wing,'#e5c862',[side*(.43+i*.14),1.72-i*.09,.14],[.045,.07,.018]);}
+ g.userData={body,head,limbs,tails,wing,phase:0,slideBlend:0};return g;
 }
-// Distances remain gameplay metres. Art units are scaled to the runner's legs.
-function groundStride(limb,cycle,body,speed){
- const stance=T.MathUtils.lerp(.37,.26,T.MathUtils.clamp((speed-12)/12,0,1)), onGround=cycle<stance;
- const reach=speed*trackScale*stance/(2*strideRate(speed));
- const swing=Math.max(0,(cycle-stance)/(1-stance));
- const z=onGround?T.MathUtils.lerp(-reach,reach,cycle/stance):reach*Math.cos(Math.PI*swing);
- const lift=onGround?0:.38*Math.sin(Math.PI*swing)**1.6;
- const thigh=limb.shin.position, calf=limb.foot.position;
- const upper=Math.hypot(thigh.y,thigh.z), lower=Math.hypot(calf.y,calf.z);
- const down=upper+lower+body.position.y-lift;
- const d=T.MathUtils.clamp(Math.hypot(z,down),Math.abs(upper-lower)+.001,upper+lower-.001);
- const angle=(a,b,c)=>Math.acos(T.MathUtils.clamp((a*a+b*b-c*c)/(2*a*b),-1,1));
- const restUpper=Math.atan2(-thigh.z,-thigh.y),restLower=Math.atan2(-calf.z,-calf.y);
- const hip=Math.atan2(-z,down)+angle(upper,d,lower)-restUpper-body.rotation.x;
- const knee=angle(upper,lower,d)-Math.PI+restUpper-restLower;
- const footPitch=onGround?-.13+.40*T.MathUtils.smoothstep(cycle/stance,.62,1):.27*Math.cos(Math.PI*swing);
- return {hip,knee,ankle:footPitch-body.rotation.x-hip-knee};
+export function animateHero(g,t,{jump=0,slide=0,glide=0,glideHeight=glide?1.2:0,running=true,dt=0,speed=12}={}){
+ const {body,head,limbs,tails,wing}=g.userData;
+ if(running)g.userData.phase+=dt*(16+Math.min(8,(speed-12)*.6));
+ const phase=g.userData.phase,air=jump>.03;const targetSlide=slide>0?1:0;g.userData.slideBlend=T.MathUtils.damp(g.userData.slideBlend??0,targetSlide,24,dt);const crouch=g.userData.slideBlend;const blend=(normal,sliding)=>T.MathUtils.lerp(normal,sliding,crouch);
+ body.position.y=jump+glideHeight+blend(running&&!air&&!glide?.045+.065*(1-Math.cos(phase*2)):0,-.60);
+ body.rotation.x=blend(glide?-.28:running?-.17:0,.50);
+ body.position.z=-.1*crouch;body.scale.set(1,1,1);
+ body.rotation.y=running&&!air?Math.sin(phase)*.055:0;
+ head.rotation.x=blend(running?.1:Math.sin(t*.8)*.025,-.50);head.rotation.y=running?Math.sin(phase)*-.035:Math.sin(t*.5)*.10;
+ wing.visible=glideHeight>.08;wing.scale.setScalar(Math.min(1,glideHeight/.8));
+ for(const a of limbs){const p=phase+(a.side===1?Math.PI:0),s=Math.sin(p);
+ a.leg.rotation.x=blend(glide?.15:air?(a.side===1?-.85:.5):running?s*.95:.02,1.05);
+ // Feet-first slide: lower the hips without folding the head toward the road.
+ a.shin.rotation.x=blend(glide?-.65:air?-1.1:running?-.12-Math.max(0,-s)*1.65:-.04,-.35);
+ a.arm.rotation.x=blend(glide?-1.2:air?-1.15:running?-s*.8:-.08,.3);
+ a.arm.rotation.z=glide?a.side*1.05:slide?a.side*.08:a.side*.12;
+ a.fore.rotation.x=blend(glide?.3:running?1.1+Math.max(0,-s)*.25:.18,.8);
+ }
+ tails.forEach((tail,i)=>{tail.rotation.x=running?-.8+Math.sin(t*13-i)*.2:Math.sin(t*2+i)*.07;tail.rotation.z=(i?1:-1)*.2+Math.sin(t*9-i)*.13;});
 }
 
-export function animateHero(g,t,{jump=0,slide=0,glide=0,glideHeight=glide?1.2:0,running=true,dt=0,speed=12,alert=0}={}){
- const state=g.userData,{body,head,limbs,tails,wing}=state;
- const sprint=running&&jump<.025&&!glide&&glideHeight<.08&&!slide;
- if(sprint)state.phase=(state.phase+dt*strideRate(speed))%1;
- const phase=state.phase,tau=Math.PI*2;
- state.slideBlend=T.MathUtils.damp(state.slideBlend,slide?1:0,22,dt);
- const blend=(base,low)=>T.MathUtils.lerp(base,low,state.slideBlend);
- const dip=sprint?.028*Math.cos(tau*2*(phase-.12)):0;
- body.rotation.x=blend(glide?-.16:sprint?-.09:0,.45);
- body.position.y=jump+glideHeight+blend(sprint?-.115-dip:0,-.65);
- body.position.z=-1.2*Math.sin(body.rotation.x)*(1-state.slideBlend);
- body.rotation.y=sprint?.032*Math.sin(tau*phase):0;
- head.rotation.x=blend(-body.rotation.x*.76,-.45);
- head.rotation.y=alert*.45+(running?0:.032*Math.sin(t*.7));
- wing.visible=glideHeight>.08;wing.scale.setScalar(Math.min(1,glideHeight/.8));
- for(const limb of limbs){
-  const cycle=(phase+(limb.side>0?.5:0))%1;
-  const swing=Math.cos(tau*cycle),pose=groundStride(limb,cycle,body,speed);
-  const air=jump>.025;
-  limb.leg.rotation.x=blend(glide?.19:air?(limb.side>0?.64:.12):sprint?pose.hip:.015,1.05);
-  limb.shin.rotation.x=blend(glide?-.46:air?-.95:sprint?pose.knee:-.035,-.42);
-  limb.foot.rotation.x=blend(sprint?pose.ankle:air?.2:0,-.25);
-  const reaction=alert*(limb.side>0?.48:.13);
-  limb.arm.rotation.x=reaction+blend(glide?-.35:air?.23:sprint?-.43*swing-.10:-.05,.24);
-  limb.arm.rotation.z=limb.side*(glide?.49:-.55);
-  limb.fore.rotation.x=reaction*.9+blend(sprint?.67-.13*swing:air?.72:.09,.65);
- }
- tails.forEach((tail,i)=>{
-  tail.rotation.x=sprint?-.34+.08*Math.sin(phase*tau-i):-.03;
-  tail.rotation.z=(i?1:-1)*.16;
- });
-}
+export {profile,oval,curve,ring,pivot};
