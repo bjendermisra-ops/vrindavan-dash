@@ -1,3 +1,4 @@
+import {trackScale,strideRate} from './gait.mjs';
 import * as T from './vendor/three.module.js';
 import {GLTFLoader} from './vendor/GLTFLoader.js';
 import {clone} from './vendor/SkeletonUtils.js';
@@ -14,14 +15,31 @@ async function loadFigure(name) {
   if (!response.ok) throw new Error('Could not load ' + name + ' model');
   bytes = await response.arrayBuffer();
  }
- return (await new GLTFLoader().parseAsync(bytes, '')).scene;
+ const scene=(await new GLTFLoader().parseAsync(bytes,'')).scene;
+ const mesh=scene.getObjectByName('Figure'), bones=[...mesh.skeleton.bones];
+ const {position,skinIndex,skinWeight}=mesh.geometry.attributes;
+ const female=name==='radha';
+ for(const [side,suffix] of [[-1,'l'],[1,'r']]){
+  const shin=scene.getObjectByName('Shin'+suffix), ankle=new T.Bone();
+  ankle.name='Foot'+suffix;
+  const at=new T.Vector3(side*(female?.242:.264),female?.101:.097,female?-.045:-.020);
+  ankle.position.copy(shin.worldToLocal(at));shin.add(ankle);
+  const old=bones.indexOf(shin), next=bones.length;bones.push(ankle);
+  for(let i=0;i<position.count;i++){
+   const w=1-T.MathUtils.smoothstep(position.getY(i),.08,.15);
+   if(!w||skinIndex.getX(i)!==old)continue;
+   skinIndex.setXYZW(i,next,old,0,0);skinWeight.setXYZW(i,w,1-w,0,0);
+  }
+ }
+ scene.updateMatrixWorld(true);mesh.bind(new T.Skeleton(bones));
+ return scene;
 }
 
 const [krishna, radha] = await Promise.all([loadFigure('krishna'), loadFigure('radha')]);
 const gold = '#ca9a44';
 const silks = {
  krishna: '#e4ae36', festival: '#df792e', peacock: '#207a70',
- cowherd: '#e9dfbc', radha: '#b84b71', royal: '#304c89'
+ cowherd: '#e9dfbc', radha: '#b84b71', royal: '#304c89', danav: '#503d59'
 };
 
 // Open-ended, tapered hair ribbons with a rounded cross-section and a side part.
@@ -50,12 +68,13 @@ function hair(head, female) {
  if(female) for(let i=0;i<8;i++){const t=i/8;oval(head,'#251d20',[.012*Math.sin(i*2),2.14-t*.45,.075],[.05*(1-t*.65),.057,.038]);}
 }
 
-function face(head,female) {
+function face(head,female,danav) {
  const y=female?2.204:2.210;
  for(const side of [-1,1]){
   curve(head,'#31262a',[[side*.020,y+.026,-.211],[side*.044,y+.029,-.206],[side*.062,y+.026,-.197],[side*.075,y+.021,-.183]],.0032);
   ring(head,gold,[side*.111,2.142,-.054],.015,.0028,0);
  }
+ if(danav)return;
  if(female) oval(head,'#982e39',[0,2.248,-.208],[.005,.007,.0025]);
  else {
   curve(head,'#f1e9cf',[[-.011,2.274,-.206],[-.008,2.25,-.211],[0,2.236,-.213],[.008,2.25,-.211],[.011,2.274,-.206]],.0026);
@@ -144,7 +163,8 @@ function costume(model,body,limbs,outfit) {
   const tail=pivot(body,[side*.154,1.42,-.167]);tail.rotation.z=side*.21;
   profile(tail,sash,[[0,.052,.021],[-.13,.062,.023],[-.28,.047,.020],[-.435,.042,.017]],undefined,.10);tails.push(tail);
  }
- if(!female){
+ if(outfit==='danav') shoulderDrape(body,'#473745');
+ if(!female && outfit!=='danav'){
   shoulderDrape(body,outfit==='peacock'?'#254d77':outfit==='cowherd'?'#ba7650':sash);
   const flute=pivot(body,[.19,1.45,-.149]);flute.rotation.z=-.43;
   curve(flute,'#966331',[[0,-.14,0],[0,.21,0]],.014);
@@ -195,14 +215,17 @@ export function makeHero(outfit='krishna'){
  figure.castShadow=true;figure.receiveShadow=true;figure.frustumCulled=false;
  if(!female) {
   figure.material=figure.material.clone();
-  figure.material.color.set('#c3d2ff');
+  figure.material.color.set(outfit==='danav'?'#ba928a':'#c3d2ff');
  }
  const head=model.getObjectByName('Head');
  const ornaments=pivot(head,head.position.clone().negate().toArray());
- hair(ornaments,female);face(ornaments,female);headwear(ornaments,outfit);batchOrnaments(ornaments);
+ hair(ornaments,female);face(ornaments,female,outfit==='danav');
+ if(outfit==='danav'){
+  for(const side of [-1,1])curve(ornaments,'#bc9b74',[[side*.09,2.31,0],[side*.13,2.38,.01],[side*.12,2.43,.04]],.017);
+ }else headwear(ornaments,outfit);batchOrnaments(ornaments);
  const limbs=[-1,1].map(side=>{
   const suffix=side<0?'l':'r', joint=name=>model.getObjectByName(name+suffix);
-  return {side,leg:joint('Leg'),shin:joint('Shin'),arm:joint('Arm'),fore:joint('Fore')};
+  return {side,leg:joint('Leg'),shin:joint('Shin'),arm:joint('Arm'),fore:joint('Fore'),foot:joint('Foot')};
  });
  const tails=costume(model,body,limbs,outfit);
  const wing=new T.Group();body.add(wing);wing.visible=false;
@@ -213,23 +236,54 @@ export function makeHero(outfit='krishna'){
  g.userData={body,head,limbs,tails,wing,phase:0,slideBlend:0};
  animateHero(g,0,{running:false});return g;
 }
-export function animateHero(g,t,{jump=0,slide=0,glide=0,glideHeight=glide?1.2:0,running=true,dt=0,speed=12}={}){
- const {body,head,limbs,tails,wing}=g.userData;
- if(running)g.userData.phase+=dt*(16+Math.min(8,(speed-12)*.6));
- const phase=g.userData.phase,air=jump>.03;const targetSlide=slide>0?1:0;g.userData.slideBlend=T.MathUtils.damp(g.userData.slideBlend??0,targetSlide,24,dt);const crouch=g.userData.slideBlend;const blend=(normal,sliding)=>T.MathUtils.lerp(normal,sliding,crouch);
- body.position.y=jump+glideHeight+blend(running&&!air&&!glide?.045+.065*(1-Math.cos(phase*2)):0,-.60);
- body.rotation.x=blend(glide?-.28:running?-.17:0,.50);
- body.position.z=-.1*crouch;body.scale.set(1,1,1);
- body.rotation.y=running&&!air?Math.sin(phase)*.055:0;
- head.rotation.x=blend(running?.1:Math.sin(t*.8)*.025,-.50);head.rotation.y=running?Math.sin(phase)*-.035:Math.sin(t*.5)*.10;
+// Distances remain gameplay metres. Art units are scaled to the runner's legs.
+function groundStride(limb,cycle,body,speed){
+ const stance=T.MathUtils.lerp(.37,.26,T.MathUtils.clamp((speed-12)/12,0,1)), onGround=cycle<stance;
+ const reach=speed*trackScale*stance/(2*strideRate(speed));
+ const swing=Math.max(0,(cycle-stance)/(1-stance));
+ const z=onGround?T.MathUtils.lerp(-reach,reach,cycle/stance):reach*Math.cos(Math.PI*swing);
+ const lift=onGround?0:.38*Math.sin(Math.PI*swing)**1.6;
+ const thigh=limb.shin.position, calf=limb.foot.position;
+ const upper=Math.hypot(thigh.y,thigh.z), lower=Math.hypot(calf.y,calf.z);
+ const down=upper+lower+body.position.y-lift;
+ const d=T.MathUtils.clamp(Math.hypot(z,down),Math.abs(upper-lower)+.001,upper+lower-.001);
+ const angle=(a,b,c)=>Math.acos(T.MathUtils.clamp((a*a+b*b-c*c)/(2*a*b),-1,1));
+ const restUpper=Math.atan2(-thigh.z,-thigh.y),restLower=Math.atan2(-calf.z,-calf.y);
+ const hip=Math.atan2(-z,down)+angle(upper,d,lower)-restUpper-body.rotation.x;
+ const knee=angle(upper,lower,d)-Math.PI+restUpper-restLower;
+ const footPitch=onGround?-.13+.40*T.MathUtils.smoothstep(cycle/stance,.62,1):.27*Math.cos(Math.PI*swing);
+ return {hip,knee,ankle:footPitch-body.rotation.x-hip-knee};
+}
+
+export function animateHero(g,t,{jump=0,slide=0,glide=0,glideHeight=glide?1.2:0,running=true,dt=0,speed=12,alert=0}={}){
+ const state=g.userData,{body,head,limbs,tails,wing}=state;
+ const sprint=running&&jump<.025&&!glide&&glideHeight<.08&&!slide;
+ if(sprint)state.phase=(state.phase+dt*strideRate(speed))%1;
+ const phase=state.phase,tau=Math.PI*2;
+ state.slideBlend=T.MathUtils.damp(state.slideBlend,slide?1:0,22,dt);
+ const blend=(base,low)=>T.MathUtils.lerp(base,low,state.slideBlend);
+ const dip=sprint?.028*Math.cos(tau*2*(phase-.12)):0;
+ body.rotation.x=blend(glide?-.16:sprint?-.09:0,.45);
+ body.position.y=jump+glideHeight+blend(sprint?-.115-dip:0,-.65);
+ body.position.z=-1.2*Math.sin(body.rotation.x)*(1-state.slideBlend);
+ body.rotation.y=sprint?.032*Math.sin(tau*phase):0;
+ head.rotation.x=blend(-body.rotation.x*.76,-.45);
+ head.rotation.y=alert*.45+(running?0:.032*Math.sin(t*.7));
  wing.visible=glideHeight>.08;wing.scale.setScalar(Math.min(1,glideHeight/.8));
- for(const a of limbs){const p=phase+(a.side===1?Math.PI:0),s=Math.sin(p);
- a.leg.rotation.x=blend(glide?.15:air?(a.side===1?-.85:.5):running?s*.95:.02,1.05);
- // Feet-first slide: lower the hips without folding the head toward the road.
- a.shin.rotation.x=blend(glide?-.65:air?-1.1:running?-.12-Math.max(0,-s)*1.65:-.04,-.35);
- a.arm.rotation.x=blend(glide?-1.2:air?-1.15:running?-s*.8:-.08,.3);
- a.arm.rotation.z=a.side*(glide?.55:-.53);
- a.fore.rotation.x=blend(glide?.15:running?.57+Math.max(0,-s)*.18:.02,.48);
+ for(const limb of limbs){
+  const cycle=(phase+(limb.side>0?.5:0))%1;
+  const swing=Math.cos(tau*cycle),pose=groundStride(limb,cycle,body,speed);
+  const air=jump>.025;
+  limb.leg.rotation.x=blend(glide?.19:air?(limb.side>0?.64:.12):sprint?pose.hip:.015,1.05);
+  limb.shin.rotation.x=blend(glide?-.46:air?-.95:sprint?pose.knee:-.035,-.42);
+  limb.foot.rotation.x=blend(sprint?pose.ankle:air?.2:0,-.25);
+  const reaction=alert*(limb.side>0?.48:.13);
+  limb.arm.rotation.x=reaction+blend(glide?-.35:air?.23:sprint?-.43*swing-.10:-.05,.24);
+  limb.arm.rotation.z=limb.side*(glide?.49:-.55);
+  limb.fore.rotation.x=reaction*.9+blend(sprint?.67-.13*swing:air?.72:.09,.65);
  }
- tails.forEach((tail,i)=>{tail.rotation.x=running?-.8+Math.sin(t*13-i)*.2:Math.sin(t*2+i)*.07;tail.rotation.z=(i?1:-1)*.2+Math.sin(t*9-i)*.13;});
+ tails.forEach((tail,i)=>{
+  tail.rotation.x=sprint?-.34+.08*Math.sin(phase*tau-i):-.03;
+  tail.rotation.z=(i?1:-1)*.16;
+ });
 }

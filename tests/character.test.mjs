@@ -1,7 +1,26 @@
+import {trackScale,strideRate} from '../dist/gait.mjs';
 import {test} from 'node:test';import assert from 'node:assert/strict';
 import {makeHero,animateHero} from '../dist/character.mjs';
 test('all six playable appearances construct finite indexed geometry',()=>{for(const outfit of ['krishna','festival','peacock','cowherd','radha','royal']){const g=makeHero(outfit);let vertices=0;g.traverse(m=>{if(!m.isMesh)return;const a=m.geometry.attributes.position.array;vertices+=a.length/3;assert.ok(a.every(Number.isFinite));const index=m.geometry.index?.array;if(index)assert.ok(index.every(v=>v<a.length/3));});assert.ok(vertices>10000);}});
-test('sprint alternates hips, flexes knees and freezes when paused',()=>{const g=makeHero();let samples=[];for(let i=0;i<60;i++){animateHero(g,i/60,{dt:1/60,running:true,speed:16});const [a,b]=g.userData.limbs;assert.ok(Math.abs(a.leg.rotation.x+b.leg.rotation.x)<1e-6);assert.ok(a.shin.rotation.x<=0);samples.push(a.leg.rotation.x);}assert.ok(Math.max(...samples)>.9);assert.ok(Math.min(...samples)<-.9);let phase=g.userData.phase;animateHero(g,1,{dt:0,running:true});assert.equal(g.userData.phase,phase);});
+test('each runner plants alternating feet, tracks the road, and clears the ground in swing',()=>{
+ for(const id of ['krishna','festival','peacock','cowherd','radha','royal','danav']){
+  const hero=makeHero(id), [left,right]=hero.userData.limbs;
+  for(const speed of [12,18,24]){
+   const foot=(phase,limb)=>{
+    hero.userData.phase=phase;
+    animateHero(hero,0,{dt:0,speed});
+    assert.equal(hero.userData.phase,phase);
+    return limb.foot.getWorldPosition(limb.foot.position.clone());
+   };
+   const strike=foot(.04,left), stance=foot(.21,left), swing=foot(.67,left);
+   assert.ok(Math.abs(strike.y-.1)<.025 && Math.abs(stance.y-.1)<.025,id);
+   const expected=.17*speed*trackScale/strideRate(speed);
+   assert.ok(Math.abs(stance.z-strike.z-expected)<.035,id);
+   assert.ok(swing.y>stance.y+.28,id);
+   assert.ok(Math.abs(foot(.54,right).y-strike.y)<.015,id);
+  }
+ }
+});
 test('slide lowers hips without squashing or pitching the head at the floor',()=>{const g=makeHero();animateHero(g,1,{glide:2,dt:1/60});assert.equal(g.userData.wing.visible,true);for(let i=0;i<30;i++)animateHero(g,2,{slide:1,dt:1/60});assert.equal(g.userData.wing.visible,false);assert.deepEqual(g.userData.body.scale.toArray(),[1,1,1]);assert.ok(g.userData.body.position.y<-.5);assert.ok(Math.abs(g.userData.body.rotation.x+g.userData.head.rotation.x)<.02);for(let i=0;i<30;i++)animateHero(g,3,{dt:1/60});assert.ok(g.userData.slideBlend<.001);});
 
 test('each costume animates a bound anatomical mesh and weighted garments',()=>{
