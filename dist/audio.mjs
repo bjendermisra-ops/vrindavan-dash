@@ -17,6 +17,7 @@ export class GameAudio{
  this.step++;this.next+=beat;}}
  effect(name,value=0){if(this.settings.sound===false||!this.unlock())return;const t=this.ctx.currentTime+.005;
  if(name==='collect'){if(t-this.lastCollect<.035)return;this.lastCollect=t;const f=hz(81+(value%5)*2);this.tone(f,t,.13,.10);this.tone(f*1.5,t+.025,.18,.045);}
+ else if(name==='ghat-bell'){for(const [f,v] of [[660,.08],[1325,.025],[1846,.012]])this.tone(f,t,.85,v,'sine',this.fx,1,true);}
  else if(name==='jump'){this.tone(260,t,.16,.055,'sine',this.fx,2.2);this.hiss(t,.09,.025,2800);}
  else if(name==='slide'){this.hiss(t,.22,.055,1200);this.tone(210,t,.14,.025,'triangle',this.fx,.5);}
  else if(name==='lane')this.hiss(t,.055,.025,3500);
