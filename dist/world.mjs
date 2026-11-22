@@ -35,8 +35,10 @@ export class World{
  this.portraits??=new Map();if(this.portraits.has(name))return this.portraits.get(name);
  if(!this.heroes.has(name))this.heroes.set(name,makeHero(name));const hero=this.heroes.get(name),parent=hero.parent,position=hero.position.clone(),rotation=hero.rotation.clone();
  const scene=new T.Scene();scene.background=new T.Color('#183e68');scene.add(new T.HemisphereLight('#fff4df','#6080a4',2.4));const key=new T.DirectionalLight('#ffedcd',2);key.position.set(-3,5,4);scene.add(key);scene.add(hero);hero.position.set(0,0,0);hero.rotation.set(0,Math.PI,0);animateHero(hero,0,{running:false,dt:0});
- const camera=new T.PerspectiveCamera(31,1,.1,20);camera.position.set(0,1.98,3.3);camera.lookAt(0,1.92,0);
- const target=new T.WebGLRenderTarget(160,160),prior=this.renderer.getRenderTarget();const pixels=new Uint8Array(160*160*4);
+ // Refresh the active actor's skin palette after moving it into the portrait scene.
+ hero.updateMatrixWorld(true);hero.getObjectByName('Figure').skeleton.update();
+ const camera=new T.PerspectiveCamera(31,1,.1,20);camera.position.set(0,2.13,1.92);camera.lookAt(0,2.12,0);
+ const target=new T.WebGLRenderTarget(160,160,{colorSpace:T.SRGBColorSpace}),prior=this.renderer.getRenderTarget();const pixels=new Uint8Array(160*160*4);
  try{this.renderer.setRenderTarget(target);this.renderer.render(scene,camera);this.renderer.readRenderTargetPixels(target,0,0,160,160,pixels);}finally{this.renderer.setRenderTarget(prior);target.dispose();scene.remove(hero);if(parent)parent.add(hero);hero.position.copy(position);hero.rotation.copy(rotation);}
  const canvas=document.createElement('canvas');canvas.width=canvas.height=160;const ctx=canvas.getContext('2d'),frame=ctx.createImageData(160,160);for(let y=0;y<160;y++)frame.data.set(pixels.subarray((159-y)*640,(160-y)*640),y*640);ctx.putImageData(frame,0,0);const url=canvas.toDataURL('image/png');this.portraits.set(name,url);return url;
  }

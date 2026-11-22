@@ -1,5 +1,5 @@
 import * as T from './vendor/three.module.js';
-import {profile,oval,curve,ring,pivot} from './character.mjs';
+import {profile,oval,curve,ring,pivot} from './figure-parts.mjs';
 // Original pot-thief character; fully articulated and deliberately non-frightening.
 export function makeDanav(){
  const root=new T.Group(),body=pivot(root,[0,0,0]),skin='#8766a2',gold='#f3c568';
